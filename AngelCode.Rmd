@@ -1,0 +1,56 @@
+---
+title: "bctip training 2 part1"
+author: "Angel Chen"
+date: "January 26, 2018"
+output: html_document
+---
+Part1
+```{r}
+setwd("~/Downloads")
+surg <- read.csv("SurgeryDateData.csv")
+dim(surg)
+
+#2
+library(lubridate)
+surg$DOB <- mdy(surg$DOB)
+surg$surgeryDate <- mdy(surg$surgeryDate)
+
+#3
+int <- interval(surg$DOB,surg$surgeryDate)
+ageAtSurgery <- time_length(int,"year")
+ageAtSurgery
+
+#4
+DOB_weekend <- wday(surg$DOB)==6|wday(surg$DOB)==7
+
+
+```
+
+```{R}
+y1 <- c(13,14,8,9,11)
+y2 <- c(4,6,2,1,0)
+var1 <- var(y1)
+var2 <- var(y2)
+sp=(4*var1+4*var2)/8
+sp
+d <- matrix(c(13,14,8,9,11,4,6,2,1,0), 10,1)
+x <- matrix(c(rep(1,10),rep(1,5),rep(0,5)),10,2)
+beta <- matrix(c(2.6,8.4),2,1)
+t <- t(d-x%*%beta)
+t%*%t(t)
+A <- t(x)%*%x
+sol <- solve(A)
+6.15*sol
+mean1 <- sum(y1)/5
+mean2 <- sum(y2)/5
+mean1
+mean2
+```
+
+```{R}
+
+plot(y=14000, x=0, type="l", ylim=c(0,105000),xlim=c(0,100), main="Website Visit Statistics",xaxt='n',yaxt='n', ylab="", xlab="")
+
+abline(h=14000, lty=5, col="red", lwd=3)
+abline(h=25000, lty=5, col="green", lwd=3)
+abline(h=100000, lty=5, col="blue", lwd=3)
