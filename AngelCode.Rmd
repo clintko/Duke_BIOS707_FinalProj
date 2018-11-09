@@ -4,6 +4,12 @@ author: "Angel Chen"
 date: "January 26, 2018"
 output: html_document
 ---
+
+```{r}
+### ignore this chunk
+```
+
+
 Part1
 ```{r}
 setwd("~/Downloads")
