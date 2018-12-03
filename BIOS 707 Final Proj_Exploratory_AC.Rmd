@@ -1,0 +1,70 @@
+---
+title: 'BIOS 707 Final Project: Preliminary Analysis'
+author: "Angel Chen"
+date: "12/3/2018"
+output: pdf_document
+---
+
+
+###load data 
+```{r}
+setwd("~/Downloads")
+raw <- read.csv("data.csv")
+#for some reason an extra column was read in as NA values
+#remove last column
+raw <- raw[,1:32]
+str(raw)
+summary(raw)
+#there are no NA values in the entire dataset, HOORAY!
+bcdat <- raw
+````
+
+### data cleaning
+I suspect high correlation exists in this data because we have variables such as radius, area, perimeter and shape as a linear or some form of combination of each other
+```{r}
+correlations <- cor(bcdat[,-c(1:2)])
+library(corrplot)
+corrplot(correlations, order = "hclust", tl.cex=1, addrect = 8)
+#find vars that are highly correlated
+library(caret)
+highCorr <- findCorrelation(correlations, cutoff = .85)
+colnames(bcdat)[highCorr]
+```
+Should we remove some of these correlated values? 
+
+###PCA analysis (eliminated those that are highly correlated)
+```{r}
+bcdat_new <- bcdat[, -highCorr]
+pca <- prcomp(bcdat_new[,-c(1:2)], scale = TRUE, center = TRUE)
+summary(pca)
+
+
+#calculate the standard deviation
+pca.var = pca$sdev^2
+
+#Calculate proportion of variance explained
+pve = pca.var/sum(pca.var)
+z = seq(1,17)
+
+#Calculate cummulative PVE
+cumpve = cumsum(pve)
+pve.table = as.data.frame(cbind(z,pve, cumpve))
+
+#plot variables against proportion variance explained
+ggplot(pve.table, aes(x=z,y=pve))+geom_point()
+
+#plot variables against cumulative varinace explained
+
+
+#to get 95% of the information in our data we need about 8 PCs
+
+
+#explore the first 3 PCs
+#install.packages("GGally")
+library(GGally)
+
+PCs <- data.frame(pca$x)
+PCs$diagnosis <- bcdat$diagnosis
+ggpairs(data=PCs,columns = 1:3, ggplot2::aes(color=diagnosis))
+
+```
