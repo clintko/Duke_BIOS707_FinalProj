@@ -1,0 +1,215 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# About the notebook
+
+Try to perform some exploratory data analysis after looking the analysis Angel perform
+
+```{r}
+getwd()
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(factoextra)
+library(tsne)
+library(gridExtra)
+```
+
+```{r, message = FALSE, warning=FALSE}
+dat_raw = read_csv("./data/data.csv")
+dat_raw = dat_raw[, 1:32]
+```
+
+```{r}
+dat_covar = dat_raw %>% select(-id, -diagnosis)
+```
+
+
+# PCA visualization
+```{r}
+res_pca = prcomp(dat_covar, scale = TRUE)
+res_pca$prop = res_pca$sdev^2 / sum(res_pca$sdev^2)
+```
+
+```{r}
+num1 = signif(res_pca$prop[1], 2)
+num2 = signif(res_pca$prop[2], 2)
+
+df = res_pca$x %>% as.data.frame
+df$diagnosis = dat_raw$diagnosis
+
+my_geom = geom_point(size = 0.2)
+
+gp1 = ggplot(df, aes(x = PC1, y = PC2, color = diagnosis)) + 
+    my_geom +
+    labs(title = "PC1 vs PC2", x = paste("PC1"), y = paste("PC2"))
+
+gp2 = ggplot(df, aes(x = PC1, y = PC3, color = diagnosis)) + 
+    my_geom +
+    labs(title = "PC1 vs PC3", x = paste("PC1"), y = paste("PC3"))
+
+gp3 = ggplot(df, aes(x = PC2, y = PC3, color = diagnosis)) + 
+    my_geom +
+    labs(title = "PC2 vs PC3", x = paste("PC2"), y = paste("PC3"))
+
+grid.arrange(gp1, gp2, gp3, nrow = 2, ncol = 2)
+```
+
+# take a look at the loading
+
+```{r, fig.height=10, fig.width=10}
+gp1 = fviz_pca_var(res_pca, repel = TRUE)
+#gp1 = gp1 + xlim(c(-1, 0.5))
+print(gp1)
+```
+
+```{r, fig.height=10, fig.width=10}
+num1 = round(res_pca$prop[1] * 100, digits = 1)
+num2 = round(res_pca$prop[2] * 100, digits = 1)
+
+
+df = res_pca$rotation %*% diag(res_pca$sdev) %>% as.data.frame
+colnames(df) = paste0("PC", 1:ncol(df))
+df$variable = rownames(res_pca$rotation)
+
+gp2 = ggplot(df, aes(x = PC1, y = PC2, label = variable)) + 
+    geom_vline(xintercept = 0) + 
+    geom_hline(yintercept = 0) +
+    #geom_point() + 
+    geom_segment(mapping = aes(
+        x=0, xend=PC1,
+        y=0, yend=PC2), 
+        arrow=arrow(length=unit(0.30,"cm"), 
+                    type = "closed"), 
+        size=0.5, 
+        color="blue") +
+    geom_text(aes(x = PC1 * 1 + 0.2 * sign(PC1), 
+                  y = PC2 * 1 + 0.1 * sign(PC2)^3)) +
+    xlim(c(-1.4, 1.4)) +
+    ylim(c(-1.4, 1.4)) +
+    labs(title = "Variables-PCA", 
+         x = paste0("Dim1 (", num1, "%)"),
+         y = paste0("Dim2 (", num2, "%)"))
+
+print(gp2)
+```
+
+```{r}
+df = res_pca$rotation %*% diag(res_pca$sdev) %>% as.data.frame
+colnames(df) = paste0("PC", 1:ncol(df))
+df$variable = rownames(res_pca$rotation)
+
+df = df %>% arrange(PC1)
+df$variable = factor(df$variable, levels = as.character(df$variable))
+
+gp = ggplot(df, aes(x = variable, y = abs(PC1))) +
+    geom_bar(stat = "identity") + 
+    theme(axis.text.x = element_text(
+        angle = 90,
+        vjust = 0.1))
+print(gp)
+```
+
+
+# t-SNE visualization
+```{r}
+res_tsne = tsne(scale(dat_covar), k = 2, perplexity = 30)
+colnames(res_tsne) = c("x", "y")
+```
+
+```{r}
+df = res_tsne %>% as.data.frame
+df$diagnosis = dat_raw$diagnosis
+
+gp = ggplot(df, aes(x = x, y = y, color = diagnosis)) +
+    geom_point()
+
+print(gp)
+```
+
+
+
+```{r}
+head(dat_raw)
+```
+
+```{r}
+
+```
+
+```{r}
+head(dat_raw)
+```
+
+
+```{r}
+dat_covar = dat_raw %>% select(-id, -diagnosis)
+dat_covar_scale = scale(dat_covar)
+```
+
+```{r}
+
+```
+
+```{r}
+dim(dat_covar)
+```
+
+
+```{r}
+dim(res_pca$x)
+```
+
+```{r}
+names(res_pca)
+```
+
+```{r}
+res_pca$prop[1:5]
+```
+
+
+```{r}
+num1 = signif(res_pca$prop[1], 2)
+num2 = signif(res_pca$prop[2], 2)
+
+res_pca$x %>% as.data.frame %>% 
+    ggplot(., aes(x = PC1, y = PC2)) + 
+    geom_point() +
+    labs(title = "PCA",
+         x = paste("PC1"), 
+         y = paste("PC2"))
+```
+
+
+
+```{r}
+fviz_pca_biplot(
+    res_pca, 
+    repel = TRUE,
+    col.var = "#2E9FDF", # Variables color
+    col.ind = "#696969"  # Individuals color
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
