@@ -1,0 +1,176 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+# About the notebook
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(class)
+library(caret)
+library(glmnet) ###for LASSO/Ridge
+library(randomForest)
+library(gridExtra)
+```
+
+# Import data
+
+```{r, message = FALSE, warning = FALSE}
+dat_raw = read_csv("./data/data.csv")
+dat_raw = dat_raw[, 1:32]
+colnames(dat_raw) = str_replace(
+    string = colnames(dat_raw), 
+    pattern = " ", 
+    replacement = "_")
+
+dat_raw$diagnosis = factor(dat_raw$diagnosis, levels = c("B", "M"))
+dat_raw$label     = as.integer(dat_raw$diagnosis) - 1
+```
+
+preprocess the data
+```{r}
+dat_prep  = dat_raw  %>% select(-id, -diagnosis)
+dat_covar = dat_prep %>% select(-label)
+dat_label = dat_prep %>% select( label)
+```
+
+# PCA
+
+```{r}
+###
+res_pca = prcomp(dat_covar, scale = TRUE)
+
+###
+res_pca$prop = res_pca$sdev^2 / sum(res_pca$sdev^2)
+num1 = signif(res_pca$prop[1], 2)
+num2 = signif(res_pca$prop[2], 2)
+
+###
+df = res_pca$x %>% as.data.frame
+df$diagnosis = dat_raw$diagnosis
+
+###
+my_geom = geom_point(size = 0.2)
+
+gp1 = ggplot(df, aes(x = PC1, y = PC2, color = diagnosis)) + 
+    my_geom +
+    labs(title = "PC1 vs PC2", x = paste("PC1"), y = paste("PC2"))
+gp2 = ggplot(df, aes(x = PC1, y = PC3, color = diagnosis)) + 
+    my_geom +
+    labs(title = "PC1 vs PC3", x = paste("PC1"), y = paste("PC3"))
+gp3 = ggplot(df, aes(x = PC2, y = PC3, color = diagnosis)) + 
+    my_geom +
+    labs(title = "PC2 vs PC3", x = paste("PC2"), y = paste("PC3"))
+
+###
+grid.arrange(gp1, gp2, gp3, nrow = 2, ncol = 2)
+```
+
+
+
+```{r}
+pca_reduc = function(x, k, eig_vec) {
+    return(as.matrix(x) %*% eig_vec[, 1:k])
+}
+pca_recon = function(x, eig_vec) {
+    k = ncol(x)
+    return(as.matrix(x) %*% t(eig_vec[, 1:k]))
+}
+allclose = function(mat1, mat2, tol = 10^(-6)){
+    mat_diff = mat1 - mat2
+    dd = sum(mat_diff^2)
+    return(dd < tol)
+}
+
+### check the function
+X = scale(dat_covar)
+vec = res_pca$rotation[, 1:2]
+
+tmp1 = X %>% pca_reduc(., k = 2, vec) %>% pca_recon(., vec)
+tmp2 = X %*% vec %*% t(vec)
+allclose(tmp1, tmp2)
+```
+
+
+# create model of random forest and Logistic regression of LASSO
+```{r}
+dat       = dat_covar %>% scale %>% as.data.frame
+dat$label = dat_label$label
+
+rfFit <- randomForest(
+    factor(label) ~ ., data = dat, 
+    do.trace = 100, 
+    importance = T, mtry = 3, ntree = 10, nodesize = 5)
+
+################################################################
+dat = dat_covar %>% scale %>% as.matrix
+
+lasFit_cv <- cv.glmnet(
+    x = dat, 
+    y = factor(dat_label$label), 
+    family = "binomial", 
+    alpha = 1, 
+    nfolds = 10)
+
+#nrow(tmp)
+#predict(lasFit_cv, newx = as.matrix(tmp), s = "lambda.1se", type="response") %>% head
+#predict(lasFit_cv, newx = as.matrix(tmp), s = "lambda.1se", type="class") %>% head
+```
+
+# Visualization of each classifiers
+```{r, fig.height=10, fig.width=12}
+###
+df = res_pca$x %>% as.data.frame
+df$label = dat_label$label
+
+###
+x1 = floor(min(df$PC1))
+x2 = ceiling(max(df$PC1))
+y1 = floor(min(df$PC2))
+y2 = ceiling(max(df$PC2))
+x = seq(from = x1, to = x2, length.out = 50)
+y = seq(from = y1, to = y2, length.out = 50)
+
+###
+df2 = expand.grid(x, y) %>% as.data.frame
+colnames(df2) = c("PC1", "PC2")
+
+###
+tmp             = pca_recon(df2, res_pca$rotation)
+df2$label_knn   = knn(train = scale(dat_covar), test = tmp, cl = df$label)
+df2$label_rf    = predict(rfFit, newdata = data.frame(tmp))
+df2$label_lasso = predict(lasFit_cv, newx = as.matrix(tmp), s = "lambda.1se", type="class")
+###
+my_geom = geom_point(
+        data = df,
+        aes(x = PC1, y = PC2, color = as.character(label)))
+
+gp1 = ggplot() + 
+    geom_tile(
+        data = df2,
+        aes(x = PC1, y = PC2, fill = label_knn),
+        width=x[2] - x[1], height=y[2] - y[1], alpha = 0.2) +
+    labs(title = "k nearest neighbor")
+
+gp2 = ggplot() +
+    geom_tile(
+        data = df2,
+        aes(x = PC1, y = PC2, fill = label_rf),
+        width=x[2] - x[1], height=y[2] - y[1], alpha = 0.2) +
+    labs(title = "Random forest")
+
+gp3 = ggplot() +
+    geom_tile(
+        data = df2,
+        aes(x = PC1, y = PC2, fill = label_lasso),
+        width=x[2] - x[1], height=y[2] - y[1], alpha = 0.2) +
+    labs(title = "LASSO")
+
+gp1 = gp1 + my_geom
+gp2 = gp2 + my_geom
+gp3 = gp3 + my_geom
+grid.arrange(gp1, gp2, gp3, nrow = 2, ncol = 2)
+```
+
