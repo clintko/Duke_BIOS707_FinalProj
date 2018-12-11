@@ -99,7 +99,7 @@ rf_cv = function(dat, mtrys, nodesizes, ntree = 10, K = 2) {
     return(res)
 } # end func
 
-###
+### check if the function work without any error
 dat       = dat_covar %>% scale %>% as.data.frame
 dat$label = dat_label$label
 
@@ -143,67 +143,31 @@ knn_cv = function(dat, knears, K = 2) {
     return(knears[idx])
 } # end func
 
-
+### check if the function work without any error
 dat       = dat_covar %>% scale %>% as.data.frame
 dat$label = dat_label$label
+
 KNEARS    = c(2, 3, 4, 5, 6, 7, 8)
 knn_cv(dat, knears = KNEARS, K = 14)
 ```
 
 
+# cross validation of all methods
 
-
-
-
-
-
-
-
-
-# cross validation of random Forest 
-
-fit a model with a set of parameter to make sure the code for model fitting works properly
-```{r}
-### parameters
-mtry   = 5
-ndsize = 5
-
-### arrange the data
-dat       = dat_covar %>% scale %>% as.data.frame
-dat$label = dat_label$label
-
-### fit random forest
-rfFit <- randomForest(
-    factor(label) ~ ., data = dat, 
-    do.trace = 100, importance = T, ntree = 10,
-    mtry     = mtry, 
-    nodesize = ndsize)
-
-### measure the misclassification of the current model
-predict(rfFit, dat, type = "response") %>% head
-dat$label[1:6] == predict(rfFit, dat, type = "response")[1:6]
-```
-
-
-```{r}
-### intialization 
-MTRY_ALL     = c(1, 10, 20) #seq(1, 30, by = 10)
-NODESIZE_ALL = c(5, 10, 15, 20)
-K = 2
-
-### combination of mtry and nodesize
-params = expand.grid(mtry = MTRY_ALL, nodesize = NODESIZE_ALL)
-#params$error = NA
-    
-### fit random forest
-rf_all = list()
-dat       = dat_covar %>% scale %>% as.data.frame
-dat$label = dat_label$label
-
+```{r, warning=FALSE}
 ### init cv
-sp  = split(1:nrow(dat), 1:K)
-err = matrix(NA, nrow = nrow(dat), ncol = nrow(params))
-    
+KNEARS       = c(1, 2, 3, 4, 5, 6, 7, 8)
+MTRY_ALL     = c(1,  5, 10, 20)
+NODESIZE_ALL = c(5, 10, 15, 20)
+NTREE        = 50
+METHODS      = c("lasso", "rf", "knn")
+K_OUTTER     = 10
+K_INNTER     = 10
+
+### split data
+sp  = split(1:nrow(dat), 1:K)    
+err = matrix(NA, nrow = nrow(dat), ncol = length(METHODS))
+
 ### perform cross validation (cv)
 for (k in 1:K) {
     ### get the train test data for cv
@@ -211,35 +175,69 @@ for (k in 1:K) {
     dat_test  = dat[ sp[[k]], ]
     
     ###
-    for (idx in seq_len(nrow(params))){
-        param  = params[idx, ]
-        mtry   = param$mtry
-        ndsize = param$nodesize
-    
-        rf <- randomForest(
-            factor(label) ~ ., data = dat_train, 
-            importance = T, 
-            mtry       = mtry,
-            nodesize   = ndsize,
-            ntree      = 10)
-    
-        err[sp[[k]], idx] = (dat_test$label != predict(rf, dat_test, type = "response"))
+    x_train = dat_train %>% select(-label) %>% scale
+    x_test  = dat_test  %>% select(-label) %>% scale
+    y_train = dat_train$label
+    y_test  = dat_test$label
+        
+    ###
+    for (idx in seq_along(METHODS)){
+        ###
+        method = METHODS[idx]
+        
+        ### 
+        if (method == "knn") {
+            ### cross validation to find the best k in knn
+            knear = knn_cv(dat_train, KNEARS, K = K_INNTER)
+            knear = KNEARS[idx]
+            yhat  = knn(train = x_train, test = x_test, cl = y_train, k = knear)
+            err[sp[[k]], idx] = (y_test != yhat)
+        }
+        
+        if (method == "rf") {
+            ### cross validation to find the best mtry and nodesize in random forest
+            res_rf = rf_cv(dat_train, mtrys = MTRY_ALL, nodesizes = NODESIZE_ALL, ntree = NTREE, K = K_INNTER)
+            mtry   = res_rf$mtry
+            ndsize = res_rf$ndsize
+            
+            rf = randomForest(
+                factor(label) ~ ., data = dat_train, 
+                importance = T, 
+                mtry       = mtry,
+                nodesize   = ndsize,
+                ntree      = NTREE)
+            
+            yhat = predict(rf, dat_test, type = "response")
+            err[sp[[k]], idx] = (y_test != yhat)
+        }
+        
+        if (method == "lasso") {
+            ### cross validation to find the best lambda in LASSO
+            lasFit_cv <- cv.glmnet(
+                x = x_train, 
+                y = factor(y_train), 
+                family = "binomial", 
+                alpha  = 1, 
+                nfolds = K_INNTER)
+            
+            yhat = predict(lasFit_cv, newx = x_test, s = "lambda.1se", type="class")
+            yhat = as.integer(yhat)
+            err[sp[[k]], idx] = (y_test != yhat)
+        }
+        
     } # end for loop
-} # end outer loop    
+} # end outer loop 
+    
+### get the model with 
+tmp = apply(err, 2, sum)
+print("Misclassification error in CV")
+print(tmp)
 
-#applyerr
+idx = which.min(tmp)
+print("Best method")
+print(METHODS[idx])
 ```
 
-To-Do list
-# Cross validation of k nearest neighbor
-
-```{r}
-param
-dat       = dat_covar %>% scale %>% as.data.frame
-knn(train = dat, test = dat[1:5,], cl = dat_label$label, k = 3)
-```
 
 
-# Cross validation of logistic regression
-# Cross validation of all methods together
 
