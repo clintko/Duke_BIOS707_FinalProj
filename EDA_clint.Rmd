@@ -8,6 +8,7 @@ output: html_notebook
 Try to perform some exploratory data analysis after looking the analysis Angel perform
 
 ```{r}
+setwd("/home/clint/GitRepo/Duke_BIOS707_FinalProj")
 getwd()
 ```
 
@@ -16,16 +17,42 @@ getwd()
 library(tidyverse)
 library(factoextra)
 library(tsne)
+library(corrplot)
 library(gridExtra)
+library(RColorBrewer)
 ```
 
 ```{r, message = FALSE, warning=FALSE}
 dat_raw = read_csv("./data/data.csv")
 dat_raw = dat_raw[, 1:32]
+colnames(dat_raw) = str_replace(
+    string = colnames(dat_raw), 
+    pattern = " ", 
+    replacement = "_")
+
+dat_raw$diagnosis = factor(dat_raw$diagnosis, levels = c("B", "M"))
+dat_raw$label     = as.integer(dat_raw$diagnosis) - 1
 ```
 
 ```{r}
-dat_covar = dat_raw %>% select(-id, -diagnosis)
+dat_prep  = dat_raw
+dat_covar = dat_prep %>% select(-label, -id, -diagnosis)
+dat_label = dat_prep %>% select( label)
+```
+
+# heatmap
+```{r}
+M = cor(dat_covar)
+M = round(M, 2)
+my_col = colorRampPalette(rev(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA")))
+
+
+png(height=3000, width=3000, pointsize=50, file="heatmap_tri_corr.png")
+corrplot(M, method="color", type="upper", order="hclust", 
+         tl.col="black", 
+         tl.srt=90,
+         col = my_col(100))
+dev.off()
 ```
 
 
@@ -36,27 +63,54 @@ res_pca$prop = res_pca$sdev^2 / sum(res_pca$sdev^2)
 ```
 
 ```{r}
-num1 = signif(res_pca$prop[1], 2)
-num2 = signif(res_pca$prop[2], 2)
+num1 = signif(res_pca$prop[1], 2) * 100
+num2 = signif(res_pca$prop[2], 2) * 100
+num3 = signif(res_pca$prop[3], 2) * 100
 
 df = res_pca$x %>% as.data.frame
-df$diagnosis = dat_raw$diagnosis
+df$Diagnosis = dat_prep$diagnosis
+df$Diagnosis = plyr::mapvalues(
+    df$Diagnosis, 
+    from = c("B", "M"), 
+    to   = c("Benign Tumours", "Malignant Tumours"), 
+    warn_missing = TRUE)
 
-my_geom = geom_point(size = 0.2)
+################################################
+my_cols = c("Malignant Tumours" = "#fb8072", "Benign Tumours" = "#80b1d3")
+my_geom = ggplot(df) + 
+    theme_bw() + 
+    scale_colour_manual(values = my_cols) +
+    guides(colour = guide_legend(override.aes = list(size=5)))
 
-gp1 = ggplot(df, aes(x = PC1, y = PC2, color = diagnosis)) + 
+gp1 = my_geom + 
+    geom_point(aes(x = PC1, y = PC2, color = Diagnosis), size = 1.0, alpha = 0.7) + 
+    labs(title = "PC1 vs PC2", x = paste0("Dim1 (", num1, "%)"), y = paste0("Dim2 (", num2, "%)"))
+
+gp2 = my_geom + 
+    geom_point(aes(x = PC1, y = PC3, color = Diagnosis), size = 1.0, alpha = 0.7) + 
+    labs(title = "PC1 vs PC3", x = paste0("Dim1 (", num1, "%)"), y = paste0("Dim3 (", num3, "%)"))
+
+gp3 = my_geom +
+    geom_point(aes(x = PC2, y = PC3, color = Diagnosis), size = 1.0, alpha = 0.7) + 
+    labs(title = "PC2 vs PC3", x = paste0("Dim2 (", num2, "%)"), y = paste0("Dim3 (", num3, "%)"))
+
+################################################
+my_geom = theme_bw()
+
+df = data.frame(
+    x = factor(1:length(res_pca$prop)),
+    y = res_pca$prop * 100) %>% 
+    head(10)
+gp4 = ggplot(df, aes(x = x, y = y, group = 1)) + 
+    geom_bar(stat = "identity", fill = "grey30") +
+    geom_point() + 
+    geom_line() +
     my_geom +
-    labs(title = "PC1 vs PC2", x = paste("PC1"), y = paste("PC2"))
+    labs(title = "Scree plot", x = "Principal Components", y = "% of Variance")
 
-gp2 = ggplot(df, aes(x = PC1, y = PC3, color = diagnosis)) + 
-    my_geom +
-    labs(title = "PC1 vs PC3", x = paste("PC1"), y = paste("PC3"))
 
-gp3 = ggplot(df, aes(x = PC2, y = PC3, color = diagnosis)) + 
-    my_geom +
-    labs(title = "PC2 vs PC3", x = paste("PC2"), y = paste("PC3"))
-
-grid.arrange(gp1, gp2, gp3, nrow = 2, ncol = 2)
+gp = grid.arrange(gp1, gp2, gp3, gp4, nrow = 2, ncol = 2)
+ggsave(file="EDA_PCA.png", gp, width = 26, height = 20, dpi = 300, units = "cm")
 ```
 
 # take a look at the loading
@@ -97,6 +151,28 @@ gp2 = ggplot(df, aes(x = PC1, y = PC2, label = variable)) +
 
 print(gp2)
 ```
+
+```{r}
+gp = fviz_pca_biplot(res_pca, repel = TRUE,
+                
+                # Fill individuals by groups
+                geom.ind = "point",
+                pointshape = 21,
+                pointsize = 2.5,
+                col.var = "grey30",
+                fill.ind = df$Diagnosis,
+                col.ind = "black") + 
+    scale_fill_manual(values = my_cols) +
+    labs(title = "PCA Biplot of Breast Tumors") +
+    guides(fill=guide_legend(title="Diagnosis")) +
+    theme(
+        title = element_text(face = "bold", size = 25),
+        axis.title = element_text(face = "bold", size = 20))
+print(gp)
+ggsave(file="EDA_PCA_biplot.png", gp, width = 25, height = 20, dpi = 300, units = "cm")
+```
+
+
 
 ```{r}
 df = res_pca$rotation %*% diag(res_pca$sdev) %>% as.data.frame
