@@ -57,6 +57,107 @@ dat_covar = dat_prep %>% select(-label)
 dat_label = dat_prep %>% select( label)
 ```
 
+# helper function for cross validation
+```{r}
+rf_cv = function(dat, mtrys, nodesizes, ntree = 10, K = 2) {
+    ### cartesian product of two parameters
+    params = expand.grid(mtry = mtrys, nodesize = nodesizes)
+    
+    ### init cv
+    sp  = split(1:nrow(dat), 1:K)    
+    err = matrix(NA, nrow = nrow(dat), ncol = nrow(params))
+    
+    ### perform cross validation (cv)
+    for (k in 1:K) {
+        ### get the train test data for cv
+        dat_train = dat[-sp[[k]], ]
+        dat_test  = dat[ sp[[k]], ]
+    
+        ###
+        for (idx in seq_len(nrow(params))){
+            param  = params[idx, ]
+            mtry   = param$mtry
+            ndsize = param$nodesize
+    
+            rf <- randomForest(
+                factor(label) ~ ., data = dat_train, 
+                importance = T, 
+                mtry       = mtry,
+                nodesize   = ndsize,
+                ntree      = ntree)
+    
+            err[sp[[k]], idx] = (dat_test$label != predict(rf, dat_test, type = "response"))
+        } # end for loop
+    } # end outer loop 
+    
+    ### get the model with 
+    tmp = apply(err, 2, sum)
+    idx = which.min(tmp)
+    res = list(params = params, 
+               mtry   = params[idx, ]$mtry,
+               ndsize = params[idx, ]$nodesize)
+    return(res)
+} # end func
+
+###
+dat       = dat_covar %>% scale %>% as.data.frame
+dat$label = dat_label$label
+
+MTRY_ALL     = c(1, 5, 10, 15, 20)
+NODESIZE_ALL = c(5, 10, 15, 20)
+
+res_rf = rf_cv(dat, mtrys = MTRY_ALL, nodesizes = NODESIZE_ALL, ntree = 20, K = 6)
+res_rf$mtry
+res_rf$ndsize
+```
+
+```{r}
+knn_cv = function(dat, knears, K = 2) {
+    ### init cv
+    sp  = split(1:nrow(dat), 1:K)    
+    err = matrix(NA, nrow = nrow(dat), ncol = length(knears))
+    
+    ### perform cross validation (cv)
+    for (k in 1:K) {
+        ### get the train test data for cv
+        dat_train = dat[-sp[[k]], ]
+        dat_test  = dat[ sp[[k]], ]
+        
+        x_train = dat_train %>% select(-label)
+        x_test  = dat_test  %>% select(-label)
+        y_train = dat_train$label
+        y_test  = dat_test$label
+            
+        ### knn 
+        for (idx in seq_along(knears)){
+            knear = knears[idx]
+            yhat  = knn(train = x_train, test = x_test, cl = y_train, k = knear)
+            
+            err[sp[[k]], idx] = (y_test != yhat)
+        } # end for loop
+    } # end outer loop 
+    
+    ### get the model with 
+    tmp = apply(err, 2, sum)
+    idx = which.min(tmp)
+    return(knears[idx])
+} # end func
+
+
+dat       = dat_covar %>% scale %>% as.data.frame
+dat$label = dat_label$label
+KNEARS    = c(2, 3, 4, 5, 6, 7, 8)
+knn_cv(dat, knears = KNEARS, K = 14)
+```
+
+
+
+
+
+
+
+
+
 
 
 # cross validation of random Forest 
@@ -78,41 +179,67 @@ rfFit <- randomForest(
     mtry     = mtry, 
     nodesize = ndsize)
 
-### 
+### measure the misclassification of the current model
+predict(rfFit, dat, type = "response") %>% head
+dat$label[1:6] == predict(rfFit, dat, type = "response")[1:6]
 ```
 
 
 ```{r}
 ### intialization 
-MTRY_ALL     = c(1, 10, 20, 30) #seq(1, 30, by = 10)
+MTRY_ALL     = c(1, 10, 20) #seq(1, 30, by = 10)
 NODESIZE_ALL = c(5, 10, 15, 20)
+K = 2
 
 ### combination of mtry and nodesize
 params = expand.grid(mtry = MTRY_ALL, nodesize = NODESIZE_ALL)
-params$error = NA
+#params$error = NA
     
 ### fit random forest
 rf_all = list()
-for (idx in seq_len(nrow(params))){
-    param  = params[idx, ]
-    mtry   = param$mtry
-    ndsize = param$nodesize
+dat       = dat_covar %>% scale %>% as.data.frame
+dat$label = dat_label$label
+
+### init cv
+sp  = split(1:nrow(dat), 1:K)
+err = matrix(NA, nrow = nrow(dat), ncol = nrow(params))
     
-    rf <- randomForest(
-            factor(Genotype) ~ ., 
-            data       = model_mat, 
+### perform cross validation (cv)
+for (k in 1:K) {
+    ### get the train test data for cv
+    dat_train = dat[-sp[[k]], ]
+    dat_test  = dat[ sp[[k]], ]
+    
+    ###
+    for (idx in seq_len(nrow(params))){
+        param  = params[idx, ]
+        mtry   = param$mtry
+        ndsize = param$nodesize
+    
+        rf <- randomForest(
+            factor(label) ~ ., data = dat_train, 
             importance = T, 
             mtry       = mtry,
             nodesize   = ndsize,
-            ntree      = 200)
+            ntree      = 10)
     
-    rf_all[[idx]] = rf
-    params$error[idx] = mean((model_mat$Genotype - rf$votes[, 2])^2)
-} # end for loop
+        err[sp[[k]], idx] = (dat_test$label != predict(rf, dat_test, type = "response"))
+    } # end for loop
+} # end outer loop    
+
+#applyerr
 ```
 
 To-Do list
 # Cross validation of k nearest neighbor
+
+```{r}
+param
+dat       = dat_covar %>% scale %>% as.data.frame
+knn(train = dat, test = dat[1:5,], cl = dat_label$label, k = 3)
+```
+
+
 # Cross validation of logistic regression
 # Cross validation of all methods together
 
