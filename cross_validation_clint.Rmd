@@ -1,0 +1,118 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# About the notebook
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(caret)
+library(class)        ### for knn
+library(glmnet)       ### for LASSO/Ridge
+library(randomForest) ### for rf
+library(gridExtra)
+```
+
+First I will write the cross validation for each methods
+
+# Import data
+
+read in data
+```{r, message = FALSE, warning = FALSE}
+dat_raw = read_csv("./data/data.csv")
+dat_raw = dat_raw[, 1:32]
+colnames(dat_raw) = str_replace(
+    string = colnames(dat_raw), 
+    pattern = " ", 
+    replacement = "_")
+
+dat_raw$diagnosis = factor(dat_raw$diagnosis, levels = c("B", "M"))
+dat_raw$label     = as.integer(dat_raw$diagnosis) - 1
+```
+
+check if the label is balanced
+```{r}
+table(dat_raw$diagnosis)
+```
+
+upsampleing to make the label balance
+```{r}
+### initialization
+set.seed(123)
+
+### upsampleing of malignant tumor
+numdiff = table(dat_raw$diagnosis)["B"] - table(dat_raw$diagnosis)["M"]
+dat = dat_raw %>% filter(diagnosis == "M") %>% sample_n(size = numdiff) 
+dat = bind_rows(dat_raw, dat)
+
+### check if the label is balanced
+table(dat$diagnosis)
+```
+
+
+preprocess the data
+```{r}
+dat_prep  = dat  %>% select(-id, -diagnosis)
+dat_covar = dat_prep %>% select(-label)
+dat_label = dat_prep %>% select( label)
+```
+
+
+
+# cross validation of random Forest 
+
+fit a model with a set of parameter to make sure the code for model fitting works properly
+```{r}
+### parameters
+mtry   = 5
+ndsize = 5
+
+### arrange the data
+dat       = dat_covar %>% scale %>% as.data.frame
+dat$label = dat_label$label
+
+### fit random forest
+rfFit <- randomForest(
+    factor(label) ~ ., data = dat, 
+    do.trace = 100, importance = T, ntree = 10,
+    mtry     = mtry, 
+    nodesize = ndsize)
+
+### 
+```
+
+
+```{r}
+### intialization 
+MTRY_ALL     = c(1, 10, 20, 30) #seq(1, 30, by = 10)
+NODESIZE_ALL = c(5, 10, 15, 20)
+
+### combination of mtry and nodesize
+params = expand.grid(mtry = MTRY_ALL, nodesize = NODESIZE_ALL)
+params$error = NA
+    
+### fit random forest
+rf_all = list()
+for (idx in seq_len(nrow(params))){
+    param  = params[idx, ]
+    mtry   = param$mtry
+    ndsize = param$nodesize
+    
+    rf <- randomForest(
+            factor(Genotype) ~ ., 
+            data       = model_mat, 
+            importance = T, 
+            mtry       = mtry,
+            nodesize   = ndsize,
+            ntree      = 200)
+    
+    rf_all[[idx]] = rf
+    params$error[idx] = mean((model_mat$Genotype - rf$votes[, 2])^2)
+} # end for loop
+```
+
+To-Do list
+# Cross validation of k nearest neighbor
+# Cross validation of logistic regression
+# Cross validation of all methods together
+
