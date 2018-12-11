@@ -230,6 +230,7 @@ for (k in 1:K) {
     
 ### get the model with 
 tmp = apply(err, 2, sum)
+names(tmp) = METHODS
 print("Misclassification error in CV")
 print(tmp)
 
